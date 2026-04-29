@@ -4,7 +4,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "start:ingestion": "node ingestion.js",
+    "start:api": "node api.js"
   },
   "keywords": [],
   "author": "",

@@ -35,10 +35,11 @@ docker compose logs -f node-ingestion
 ```
 
 Notes
-- The Compose stack includes `mosquitto` (MQTT broker), `postgres` (database), and `node-ingestion` (this project).
+- The Compose stack includes `mosquitto` (MQTT broker), `postgres` (database), `node-ingestion` (ingestion service), and `node-api` (API service).
 - Postgres persistent data is stored in the `pgdata` volume.
 - Services use `restart: unless-stopped` to stay up across crashes/reboots.
 - `node-ingestion` waits for Postgres healthcheck before starting (Compose health-based dependency).
+- `node-api` exposes HTTP on port 3000 and has its own separate lifecycle.
 
 Database initialization
 - If `db/schema.sql` exists it will be executed automatically by Postgres on first startup because the folder is mounted into `/docker-entrypoint-initdb.d`.
@@ -52,6 +53,22 @@ Local testing
 ```bash
 npm install
 npm test
+```
+
+Local development with Docker Compose override:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.override.yml up --build
+```
+
+Production deploy (explicit prod config, no automatic restarts):
+```bash
+docker compose -f docker-compose.prod.yml up --build
+```
+
+Manual service start scripts:
+```bash
+npm run start:ingestion
+npm run start:api
 ```
 
 If you want me to also add a makefile or sample systemd unit for production, tell me which target environment you want.

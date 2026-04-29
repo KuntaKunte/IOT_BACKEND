@@ -1,0 +1,57 @@
+groups:
+  - name: iot_alerts
+    interval: 30s
+    rules:
+      - alert: DeviceHighTemperature
+        expr: device_temperature > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Device temperature high"
+          description: "Device {{ $labels.device_id }} temperature exceeds 50°C"
+
+      - alert: DeviceLowBatteryVoltage
+        expr: battery_voltage < 18
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Device battery voltage critical"
+          description: "Device {{ $labels.device_id }} battery voltage below 18V"
+
+      - alert: APIHighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API error rate exceeds 5%"
+          description: "API error rate is {{ $value }}"
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: pg_stat_activity_count > 25
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "Active connections: {{ $value }}/30"
+
+      - alert: DeviceOffline
+        expr: increase(device_offline_duration_seconds[10m]) > 600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Device offline for extended period"
+          description: "Device {{ $labels.device_id }} offline > 10 minutes"
+
+      - alert: TelemetryQueueBacklog
+        expr: mqtt_queue_length > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Telemetry queue backlog"
+          description: "Queue length: {{ $value }} messages"

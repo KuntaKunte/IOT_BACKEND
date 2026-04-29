@@ -1,0 +1,232 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.device-selector {
+  margin-bottom: 20px;
+}
+
+.command-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.template-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.template-row label {
+  font-weight: 600;
+}
+
+.template-row select {
+  flex: 1;
+  padding: 6px;
+}
+
+.command-section input, .command-section textarea {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+  padding: 8px;
+}
+
+.command-section button {
+  padding: 10px 20px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.command-section button:hover {
+  background-color: #0056b3;
+}
+
+.clear-history {
+  margin-bottom: 10px;
+  padding: 6px 12px;
+  background: #d9534f;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.clear-history:hover {
+  background: #c9302c;
+}
+
+.message {
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+.message.error {
+  background: rgba(255, 0, 0, 0.12);
+  border: 1px solid rgba(255, 0, 0, 0.35);
+  color: #800;
+}
+
+.message.success {
+  background: rgba(0, 128, 0, 0.12);
+  border: 1px solid rgba(0, 128, 0, 0.35);
+  color: #064;
+}
+
+.charts {
+  margin-bottom: 30px;
+}
+
+.telemetry-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.telemetry-table th, .telemetry-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.telemetry-table th {
+  background-color: #f2f2f2;
+}
+
+.command-history table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+.command-history th,
+.command-history td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.command-history th {
+  background-color: #f2f2f2;
+}
+
+.command-history pre {
+  margin: 0;
+  font-size: 12px;
+}
+
+.bulk-command-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.bulk-devices {
+  margin-bottom: 15px;
+}
+
+.device-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-top: 8px;
+}
+
+.device-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: normal;
+}
+
+.analytics-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.analytics-data {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.analytics-item {
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.date-range-section {
+  margin-bottom: 20px;
+}
+
+.date-inputs {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.date-inputs input {
+  padding: 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.date-inputs button {
+  padding: 8px 16px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.date-inputs button:hover {
+  background-color: #218838;
+}
+
+.historical-chart {
+  margin-bottom: 20px;
+}
+
+.all-devices-stats table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.all-devices-stats th,
+.all-devices-stats td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.all-devices-stats th {
+  background-color: #f2f2f2;
+}

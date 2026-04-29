@@ -2,24 +2,24 @@ version: "3.8"
 
 services:
   mosquitto:
-    image: eclipse-mosquitto
+    image: eclipse-mosquitto:latest
     ports:
       - "1883:1883"
-    restart: unless-stopped
+    restart: "no"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     environment:
       POSTGRES_USER: iot
       POSTGRES_PASSWORD: iotpass
       POSTGRES_DB: iotdb
     ports:
       - "5432:5432"
-    restart: unless-stopped
+    restart: "no"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data:rw
       - ./db:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U iot -d iotdb"]
@@ -30,15 +30,15 @@ services:
 
   node-ingestion:
     build: .
-    command: ["node", "index.js"]
+    command: ["node", "ingestion.js"]
     depends_on:
-      mosquitto:
-        condition: service_started
       postgres:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     env_file:
       - .env
-    restart: unless-stopped
+    restart: "no"
 
   node-api:
     build: .
@@ -48,29 +48,9 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
     ports:
-      - "3001:5173"
-    depends_on:
-      - node-api
-    environment:
-      - VITE_API_URL=http://node-api:3000
-    restart: unless-stopped
-
-  simulator:
-    build:
-      context: ./simulator
-    restart: unless-stopped
-    depends_on:
-      - mosquitto
-    environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=1883
-    command: ["python", "simulator.py"]
+      - "3000:3000"
+    restart: "no"
 
 volumes:
   pgdata:
