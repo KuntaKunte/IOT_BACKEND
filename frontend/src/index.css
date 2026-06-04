@@ -230,3 +230,426 @@ body {
 .all-devices-stats th {
   background-color: #f2f2f2;
 }
+
+/* ==================== Multi-OEM Dashboard Styles ==================== */
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #e5e7eb;
+  margin-bottom: 20px;
+}
+
+.app-header h1 {
+  margin: 0;
+  color: #1f2937;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 10px;
+}
+
+.nav-tabs button {
+  padding: 10px 20px;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.nav-tabs button:hover {
+  background: #e5e7eb;
+}
+
+.nav-tabs button.active {
+  background: #3b82f6;
+  color: white;
+}
+
+.nav-tabs .badge {
+  display: inline-block;
+  background: #ef4444;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  margin-left: 5px;
+}
+
+.dashboard-header {
+  margin-bottom: 20px;
+}
+
+.dashboard-stats {
+  display: flex;
+  gap: 20px;
+  margin-top: 15px;
+}
+
+.stat-card {
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 120px;
+}
+
+.stat-card.alert-card {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.stat-value {
+  display: block;
+  font-size: 32px;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+.stat-label {
+  display: block;
+  color: #6b7280;
+  font-size: 14px;
+  margin-top: 5px;
+}
+
+.oem-distribution {
+  margin-bottom: 20px;
+  padding: 20px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.oem-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.oem-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.oem-name {
+  width: 80px;
+  font-weight: 500;
+}
+
+.oem-bar-container {
+  flex: 1;
+  height: 20px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.oem-bar {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.oem-count {
+  width: 30px;
+  text-align: right;
+  font-weight: 500;
+}
+
+.sites-grid {
+  margin-bottom: 20px;
+}
+
+.sites-table {
+  overflow-x: auto;
+}
+
+.sites-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sites-table th,
+.sites-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.sites-table th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #374151;
+}
+
+.sites-table tr:hover {
+  background: #f9fafb;
+  cursor: pointer;
+}
+
+.sites-table tr.selected {
+  background: #eff6ff;
+}
+
+.oem-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.site-details {
+  padding: 20px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.site-devices {
+  margin-bottom: 20px;
+}
+
+.site-devices label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.site-devices select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.telemetry-chart {
+  margin-bottom: 20px;
+}
+
+/* ==================== Alerts Panel Styles ==================== */
+
+.alerts-panel {
+  padding: 20px;
+}
+
+.alerts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.alerts-filters {
+  display: flex;
+  gap: 10px;
+}
+
+.alerts-filters button {
+  padding: 8px 16px;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.alerts-filters button.active {
+  background: #3b82f6;
+  color: white;
+}
+
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.alert-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.alert-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.alert-type {
+  padding: 4px 8px;
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.alert-site {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.alert-time {
+  margin-left: auto;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.alert-message {
+  color: #374151;
+  margin-bottom: 10px;
+}
+
+.alert-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.alert-actions button {
+  padding: 6px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.alert-actions button:hover {
+  background: #2563eb;
+}
+
+.resolved-badge {
+  padding: 6px 12px;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 4px;
+}
+
+.no-alerts {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+}
+
+/* ==================== Reports Panel Styles ==================== */
+
+.reports-panel {
+  padding: 20px;
+}
+
+.reports-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.reports-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reports-filters select {
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.reports-summary {
+  margin-bottom: 20px;
+}
+
+.summary-cards {
+  display: flex;
+  gap: 20px;
+  margin-top: 15px;
+}
+
+.summary-card {
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 150px;
+}
+
+.summary-value {
+  display: block;
+  font-size: 28px;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+.summary-label {
+  display: block;
+  color: #6b7280;
+  font-size: 14px;
+  margin-top: 5px;
+}
+
+.reports-table {
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+
+.reports-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.reports-table th,
+.reports-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.reports-table th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #374151;
+}
+
+.uptime-badge {
+  font-weight: 600;
+}
+
+.reports-charts {
+  margin-top: 20px;
+}
+
+.no-reports {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 8px;
+}

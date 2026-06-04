@@ -1,86 +1,127 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
+import { useState } from 'react'
 import axios from 'axios'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from 'recharts'
 import './index.css'
 
 function App() {
-  const [devices, setDevices] = useState([])
+  const [activeTab, setActiveTab] = useState('dashboard')
+
+  // Dashboard state
+  const [sites, setSites] = useState([])
+  const [selectedSite, setSelectedSite] = useState('')
+  const [selectedSiteName, setSelectedSiteName] = useState('')
+  const [newSite, setNewSite] = useState({ site_id: '', site_name: '', oem: '', location: '', capacity_kw: '' })
+  const [createMessage, setCreateMessage] = useState('')
+  const [siteDevices, setSiteDevices] = useState([])
+  const [dashboardSummary, setDashboardSummary] = useState(null)
+  const [activeAlertsCount, setActiveAlertsCount] = useState(0)
+
+  // Device state
   const [selectedDevice, setSelectedDevice] = useState('')
   const [telemetry, setTelemetry] = useState([])
+  const [analytics, setAnalytics] = useState(null)
+
+  // Alerts state
+  const [alerts, setAlerts] = useState([])
+  const [alertsFilter, setAlertsFilter] = useState('unresolved')
+
+  // Reports state
+  const [weeklyReports, setWeeklyReports] = useState([])
+  const [reportSiteFilter, setReportSiteFilter] = useState('')
+
+  // Command state
   const [command, setCommand] = useState('')
   const [parameters, setParameters] = useState('{}')
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
-  const [commandHistory, setCommandHistory] = useState([])
-  const [template, setTemplate] = useState('')
-  const [analytics, setAnalytics] = useState(null)
-  const [allDevicesStats, setAllDevicesStats] = useState([])
-  const [dateRangeTelemetry, setDateRangeTelemetry] = useState([])
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [bulkDevices, setBulkDevices] = useState([])
-  const [bulkCommand, setBulkCommand] = useState('')
-  const [bulkParameters, setBulkParameters] = useState('{}')
 
   const templates = [
     { value: '', label: '— none —', command: '', parameters: '{}' },
     { value: 'restart', label: 'Restart', command: 'restart', parameters: '{}' },
-    {
-      value: 'update_firmware',
-      label: 'Update Firmware',
-      command: 'update_firmware',
-      parameters: JSON.stringify({ version: '1.0.0' }, null, 2)
-    },
-    {
-      value: 'set_parameter',
-      label: 'Set Parameter',
-      command: 'set_parameter',
-      parameters: JSON.stringify({ param: 'name', value: 'value' }, null, 2)
-    }
   ]
 
+  // Initial data fetches
+  const fetchSites = async () => {
+    try {
+      const response = await axios.get('/api/sites')
+      setSites(response.data)
+    } catch (error) {
+      console.error('Error fetching sites:', error)
+    }
+  }
+
+  const fetchActiveAlertsCount = async () => {
+    try {
+      const response = await axios.get('/api/alerts/count')
+      setActiveAlertsCount(response.data.active_alerts || 0)
+    } catch (error) {
+      console.error('Error fetching active alerts count:', error)
+    }
+  }
 
   useEffect(() => {
-    fetchDevices()
-    fetchAllDevicesStats()
+    fetchSites()
+    fetchActiveAlertsCount()
+    fetchAlertsData()
+    fetchWeeklyReportsData()
+
+    // Poll sites and alerts periodically so UI reflects backend changes
+    const pollInterval = setInterval(() => {
+      fetchSites()
+      fetchActiveAlertsCount()
+    }, 30000) // every 30 seconds
+
+    return () => clearInterval(pollInterval)
   }, [])
 
-  const fetchDevices = async () => {
-    try {
-      const response = await axios.get('/api/devices')
-      setDevices(response.data)
-      if (response.data.length > 0 && !selectedDevice) {
-        setSelectedDevice(response.data[0].device_id)
+  useEffect(() => {
+    if (!selectedSite) return
+
+    const fetchDevicesForSite = async () => {
+      try {
+        const response = await axios.get(`/api/sites/${selectedSite}/devices`)
+        setSiteDevices(response.data)
+        if (response.data.length > 0) {
+          setSelectedDevice(response.data[0].device_id)
+        }
+      } catch (error) {
+        console.error('Error fetching site devices:', error)
       }
-    } catch (error) {
-      console.error('Error fetching devices:', error)
     }
-  }
+
+    fetchDevicesForSite()
+  }, [selectedSite])
 
   const fetchTelemetry = async (deviceId) => {
-    if (!deviceId) return
+    if (!deviceId) {
+      setTelemetry([])
+      return
+    }
+
     try {
       const response = await axios.get(`/api/telemetry/${deviceId}`)
-      setTelemetry(response.data.reverse()) // Reverse to show oldest first
-      setErrorMessage('')
+      setTelemetry(response.data)
     } catch (error) {
       console.error('Error fetching telemetry:', error)
-      setErrorMessage('Failed to load telemetry. See console for details.')
-    }
-  }
-
-  const fetchCommandHistory = async (deviceId) => {
-    if (!deviceId) return
-    try {
-      const response = await axios.get(`/api/devices/${deviceId}/commands`)
-      setCommandHistory(response.data)
-    } catch (error) {
-      console.error('Error fetching command history:', error)
+      setTelemetry([])
     }
   }
 
   const fetchAnalytics = async (deviceId) => {
     if (!deviceId) return
+
     try {
       const response = await axios.get(`/api/devices/${deviceId}/analytics`)
       setAnalytics(response.data)
@@ -89,59 +130,45 @@ function App() {
     }
   }
 
-  const fetchAllDevicesStats = async () => {
-    try {
-      const response = await axios.get('/api/analytics/devices')
-      setAllDevicesStats(response.data)
-    } catch (error) {
-      console.error('Error fetching all devices stats:', error)
-    }
-  }
-
-  const fetchDateRangeTelemetry = async (deviceId, start, end) => {
-    if (!deviceId || !start || !end) return
-    try {
-      const response = await axios.get(`/api/devices/${deviceId}/telemetry/range?startDate=${start}&endDate=${end}`)
-      setDateRangeTelemetry(response.data.reverse()) // Reverse to show oldest first
-    } catch (error) {
-      console.error('Error fetching date range telemetry:', error)
-    }
-  }
-
   useEffect(() => {
-    if (selectedDevice) {
-      fetchTelemetry(selectedDevice)
-      fetchCommandHistory(selectedDevice)
-      fetchAnalytics(selectedDevice)
-      const interval = setInterval(() => fetchTelemetry(selectedDevice), 5000)
-      return () => clearInterval(interval)
-    }
-  }, [selectedDevice])
-
-  useEffect(() => {
-    if (errorMessage || successMessage) {
-      const timeout = setTimeout(() => {
-        setErrorMessage('')
-        setSuccessMessage('')
-      }, 5000)
-      return () => clearTimeout(timeout)
-    }
-  }, [errorMessage, successMessage])
-
-
-  const clearCommandHistory = async () => {
-    if (!selectedDevice) return
-    if (!window.confirm('Are you sure you want to clear the command history for this device?')) {
+    if (!selectedDevice) {
+      setTelemetry([])
+      setAnalytics(null)
       return
     }
+
+    fetchTelemetry(selectedDevice)
+    fetchAnalytics(selectedDevice)
+  }, [selectedDevice])
+
+  const fetchAlertsData = async () => {
     try {
-      await axios.delete(`/api/devices/${selectedDevice}/commands`)
-      setCommandHistory([])
-      setSuccessMessage('Command history cleared.')
-      setErrorMessage('')
+      const response = await axios.get(
+        `/api/alerts?unresolved=${alertsFilter === 'unresolved'}`
+      )
+      setAlerts(response.data)
     } catch (error) {
-      console.error('Error clearing command history:', error)
-      setErrorMessage('Failed to clear command history')
+      console.error('Error fetching alerts:', error)
+    }
+  }
+
+  const fetchWeeklyReportsData = async () => {
+    try {
+      const response = await axios.get('/api/reports/weekly?weeks=12')
+      setWeeklyReports(response.data)
+    } catch (error) {
+      console.error('Error fetching reports:', error)
+    }
+  }
+
+  const resolveAlert = async (alertId) => {
+    try {
+      await axios.post(`/api/alerts/${alertId}/resolve`)
+      setSuccessMessage('Alert resolved successfully')
+      fetchAlertsData()
+    } catch (error) {
+      console.error('Error resolving alert:', error)
+      setErrorMessage('Failed to resolve alert')
     }
   }
 
@@ -153,366 +180,351 @@ function App() {
       setErrorMessage('No device selected.')
       return
     }
-    if (!command || typeof command !== 'string' || command.trim() === '') {
-      setErrorMessage('Command is required and must be a non-empty string.')
+
+    if (!command || command.trim() === '') {
+      setErrorMessage('Command is required.')
       return
     }
 
     let params = {}
+
     try {
       params = JSON.parse(parameters)
-      if (typeof params !== 'object' || params === null) {
-        throw new Error('Parameters must be a valid JSON object.')
-      }
     } catch (e) {
-      setErrorMessage('Parameters must be valid JSON (object).')
+      setErrorMessage('Parameters must be valid JSON.')
       return
     }
 
     try {
-      const response = await axios.post(`/api/devices/${selectedDevice}/commands`, {
-        command: command.trim(),
-        parameters: params
-      })
+      const response = await axios.post(
+        `/api/devices/${selectedDevice}/commands`,
+        {
+          command: command.trim(),
+          parameters: params,
+        }
+      )
+
       setSuccessMessage(`Command sent (id=${response.data.command_id}).`)
       setCommand('')
       setParameters('{}')
-      fetchCommandHistory(selectedDevice)
     } catch (error) {
       console.error('Error sending command:', error)
-      setErrorMessage(
-        error.response?.data?.error ||
-          error.response?.statusText ||
-          'Error sending command'
-      )
+      setErrorMessage('Error sending command')
     }
   }
 
-  const sendBulkCommand = async () => {
-    setErrorMessage('')
-    setSuccessMessage('')
-
-    if (bulkDevices.length === 0) {
-      setErrorMessage('No devices selected for bulk command.')
-      return
-    }
-    if (!bulkCommand || typeof bulkCommand !== 'string' || bulkCommand.trim() === '') {
-      setErrorMessage('Command is required and must be a non-empty string.')
-      return
-    }
-
-    let params = {}
-    try {
-      params = JSON.parse(bulkParameters)
-      if (typeof params !== 'object' || params === null) {
-        throw new Error('Parameters must be a valid JSON object.')
-      }
-    } catch (e) {
-      setErrorMessage('Parameters must be valid JSON (object).')
-      return
-    }
-
-    try {
-      const response = await axios.post('/api/devices/commands/bulk', {
-        deviceIds: bulkDevices,
-        command: bulkCommand.trim(),
-        parameters: params
-      })
-      const successCount = response.data.results.filter(r => r.status === 'success').length
-      const errorCount = response.data.results.filter(r => r.status === 'error').length
-      setSuccessMessage(`Bulk command sent: ${successCount} successful, ${errorCount} failed.`)
-      setBulkCommand('')
-      setBulkParameters('{}')
-      setBulkDevices([])
-      // Refresh command history for all affected devices
-      bulkDevices.forEach(deviceId => {
-        if (deviceId === selectedDevice) {
-          fetchCommandHistory(deviceId)
-        }
-      })
-    } catch (error) {
-      console.error('Error sending bulk command:', error)
-      setErrorMessage(
-        error.response?.data?.error ||
-          error.response?.statusText ||
-          'Error sending bulk command'
-      )
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'ok':
+        return '#22c55e'
+      case 'warning':
+        return '#f59e0b'
+      case 'offline':
+        return '#ef4444'
+      default:
+        return '#6b7280'
     }
   }
 
-  return (
-    <div className="app">
-      <h1>IoT Device Dashboard</h1>
-      
-      <div className="device-selector">
-        <label>Select Device:</label>
-        <select value={selectedDevice} onChange={(e) => setSelectedDevice(e.target.value)}>
-          {devices.map(device => (
-            <option key={device.device_id} value={device.device_id}>
-              {device.device_id} ({device.status})
-            </option>
-          ))}
-        </select>
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A'
+    return new Date(dateStr).toLocaleString()
+  }
+
+  const renderDashboard = () => (
+    <div className="dashboard">
+      <div className="dashboard-header">
+        <h2>Multi-OEM Site Dashboard</h2>
       </div>
 
-      <div className="command-section">
-        <h2>Send Command</h2>
-        {errorMessage && <div className="message error">{errorMessage}</div>}
-        {successMessage && <div className="message success">{successMessage}</div>}
-
-        <div className="template-row">
-          <label>Template:</label>
-          <select
-            value={template}
-            onChange={(e) => {
-              const sel = templates.find((t) => t.value === e.target.value)
-              setTemplate(e.target.value)
-              if (sel) {
-                setCommand(sel.command)
-                setParameters(sel.parameters)
-              }
-            }}
-          >
-            {templates.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <input
-          type="text"
-          placeholder="Command (e.g., restart, update_firmware)"
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-        />
-        <textarea
-          placeholder='Parameters (JSON, e.g., {"version": "1.2.3"})'
-          value={parameters}
-          onChange={(e) => setParameters(e.target.value)}
-        />
-        <button onClick={sendCommand}>Send Command</button>
-      </div>
-
-      <div className="bulk-command-section">
-        <h2>Bulk Commands</h2>
-        <div className="bulk-devices">
-          <label>Select Devices:</label>
-          <div className="device-checkboxes">
-            {devices.map(device => (
-              <label key={device.device_id} className="device-checkbox">
-                <input
-                  type="checkbox"
-                  checked={bulkDevices.includes(device.device_id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setBulkDevices([...bulkDevices, device.device_id])
-                    } else {
-                      setBulkDevices(bulkDevices.filter(id => id !== device.device_id))
-                    }
-                  }}
-                />
-                {device.device_id} ({device.status})
-              </label>
-            ))}
-          </div>
-        </div>
-        <input
-          type="text"
-          placeholder="Bulk Command (e.g., restart)"
-          value={bulkCommand}
-          onChange={(e) => setBulkCommand(e.target.value)}
-        />
-        <textarea
-          placeholder='Parameters (JSON, e.g., {"version": "1.2.3"})'
-          value={bulkParameters}
-          onChange={(e) => setBulkParameters(e.target.value)}
-        />
-        <button onClick={sendBulkCommand}>Send Bulk Command</button>
-      </div>
-
-      <div className="analytics-section">
-        <h2>Analytics</h2>
-        {analytics && (
-          <div className="analytics-data">
-            <div className="analytics-item">
-              <strong>Total Records:</strong> {analytics.total_records}
-            </div>
-            <div className="analytics-item">
-              <strong>Avg PV Voltage:</strong> {analytics.avg_pv_voltage?.toFixed(2)} V
-            </div>
-            <div className="analytics-item">
-              <strong>Avg Battery Voltage:</strong> {analytics.avg_battery_voltage?.toFixed(2)} V
-            </div>
-            <div className="analytics-item">
-              <strong>Avg Current:</strong> {analytics.avg_current?.toFixed(2)} A
-            </div>
-            <div className="analytics-item">
-              <strong>Avg Temperature:</strong> {analytics.avg_temperature?.toFixed(2)} °C
-            </div>
-            <div className="analytics-item">
-              <strong>Min Temperature:</strong> {analytics.min_temperature?.toFixed(2)} °C
-            </div>
-            <div className="analytics-item">
-              <strong>Max Temperature:</strong> {analytics.max_temperature?.toFixed(2)} °C
-            </div>
-            <div className="analytics-item">
-              <strong>Data Range:</strong> {analytics.first_record} to {analytics.last_record}
-            </div>
-          </div>
-        )}
-
-        <div className="date-range-section">
-          <h3>Historical Data</h3>
-          <div className="date-inputs">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              placeholder="Start Date"
-            />
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              placeholder="End Date"
-            />
-            <button onClick={() => fetchDateRangeTelemetry(selectedDevice, startDate, endDate)}>
-              Load Historical Data
-            </button>
-          </div>
-        </div>
-
-        {dateRangeTelemetry.length > 0 && (
-          <div className="historical-chart">
-            <h3>Historical Telemetry ({startDate} to {endDate})</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={dateRangeTelemetry}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="ts" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="pv_voltage" stroke="#8884d8" name="PV Voltage" />
-                <Line type="monotone" dataKey="battery_voltage" stroke="#82ca9d" name="Battery Voltage" />
-                <Line type="monotone" dataKey="current" stroke="#ffc658" name="Current" />
-                <Line type="monotone" dataKey="temperature" stroke="#ff7300" name="Temperature" />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        <div className="all-devices-stats">
-          <h3>All Devices Summary</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Device ID</th>
-                <th>Total Records</th>
-                <th>Avg PV Voltage</th>
-                <th>Avg Battery Voltage</th>
-                <th>Avg Current</th>
-                <th>Avg Temperature</th>
-                <th>Last Update</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allDevicesStats.map((stat) => (
-                <tr key={stat.device_id}>
-                  <td>{stat.device_id}</td>
-                  <td>{stat.total_records}</td>
-                  <td>{stat.avg_pv_voltage?.toFixed(2)}</td>
-                  <td>{stat.avg_battery_voltage?.toFixed(2)}</td>
-                  <td>{stat.avg_current?.toFixed(2)}</td>
-                  <td>{stat.avg_temperature?.toFixed(2)}</td>
-                  <td>{stat.last_record ? new Date(stat.last_record).toLocaleString() : '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="charts">
-        <h2>Real-time Telemetry</h2>
-        <ResponsiveContainer width="100%" height={400}>
-          <LineChart data={telemetry}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="ts" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="pv_voltage" stroke="#8884d8" name="PV Voltage" />
-            <Line type="monotone" dataKey="battery_voltage" stroke="#82ca9d" name="Battery Voltage" />
-            <Line type="monotone" dataKey="current" stroke="#ffc658" name="Current" />
-            <Line type="monotone" dataKey="temperature" stroke="#ff7300" name="Temperature" />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="telemetry-table">
-        <h2>Latest Telemetry Data</h2>
+      <div className="sites-grid">
         <table>
           <thead>
             <tr>
-              <th>Timestamp</th>
-              <th>PV Voltage</th>
-              <th>Battery Voltage</th>
-              <th>Current</th>
-              <th>Temperature</th>
+              <th>Site</th>
+              <th>OEM</th>
+              <th>Status</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            {telemetry.slice(-10).reverse().map((data, index) => (
-              <tr key={index}>
-                <td>{new Date(data.ts).toLocaleString()}</td>
-                <td>{data.pv_voltage?.toFixed(2)}</td>
-                <td>{data.battery_voltage?.toFixed(2)}</td>
-                <td>{data.current?.toFixed(2)}</td>
-                <td>{data.temperature?.toFixed(2)}</td>
+            {sites.map((site) => (
+              <tr
+                key={site.site_id}
+                style={
+                  selectedSite === site.site_id
+                    ? { backgroundColor: '#eef6ff' }
+                    : {}
+                }
+              >
+                <td>{site.site_name}</td>
+                <td>{site.oem}</td>
+                <td>
+                  <span
+                    style={{
+                      backgroundColor: getStatusColor(site.status),
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      color: 'white',
+                    }}
+                  >
+                    {site.status}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    onClick={() => {
+                      setSelectedSite(site.site_id)
+                      setSelectedSiteName(site.site_name)
+                    }}
+                  >
+                    Select
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div className="command-history">
-        <h2>Command History</h2>
-        <button className="clear-history" onClick={clearCommandHistory}>Clear history</button>
-        {commandHistory.length === 0 ? (
-          <p>No commands sent yet.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Command</th>
-                <th>Parameters</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Executed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {commandHistory.map((cmd) => (
-                <tr key={cmd.id}>
-                  <td>{cmd.id}</td>
-                  <td>{cmd.command}</td>
-                  <td>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                      {JSON.stringify(cmd.parameters || {}, null, 2)}
-                    </pre>
-                  </td>
-                  <td>{cmd.status}</td>
-                  <td>{new Date(cmd.created_at).toLocaleString()}</td>
-                  <td>{cmd.executed_at ? new Date(cmd.executed_at).toLocaleString() : '-'}</td>
-                </tr>
+      {selectedSite && (
+        <div className="site-details">
+          <h3>Selected Site: {selectedSiteName || selectedSite}</h3>
+
+          <select
+            value={selectedDevice}
+            onChange={(e) => {
+              setSelectedDevice(e.target.value)
+              fetchAnalytics(e.target.value)
+            }}
+          >
+            <option value="">Select Device</option>
+
+            {siteDevices.map((device) => (
+              <option key={device.device_id} value={device.device_id}>
+                {device.device_id}
+              </option>
+            ))}
+          </select>
+
+          {analytics && (
+            <div className="analytics-data">
+              <h4>Device Analytics</h4>
+              <p>Total Records: {analytics.total_records}</p>
+              <p>
+                Avg PV Voltage:{' '}
+                {analytics.avg_pv_voltage?.toFixed(2)} V
+              </p>
+            </div>
+          )}
+
+          {telemetry.length > 0 && (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={telemetry}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="ts" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+
+                <Line
+                  type="monotone"
+                  dataKey="pv_voltage"
+                  stroke="#8884d8"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          <div className="command-section">
+            <h4>Send Command</h4>
+
+            {errorMessage && (
+              <div className="message error">{errorMessage}</div>
+            )}
+
+            {successMessage && (
+              <div className="message success">{successMessage}</div>
+            )}
+
+            <select
+              value={command}
+              onChange={(e) => {
+                const sel = templates.find(
+                  (t) => t.value === e.target.value
+                )
+
+                if (sel) {
+                  setCommand(sel.command)
+                  setParameters(sel.parameters)
+                }
+              }}
+            >
+              {templates.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            </select>
+
+            <input
+              type="text"
+              placeholder="Command"
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+            />
+
+            <textarea
+              placeholder="Parameters JSON"
+              value={parameters}
+              onChange={(e) => setParameters(e.target.value)}
+            />
+
+            <button onClick={sendCommand}>Send Command</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderAlerts = () => (
+    <div className="alerts-panel">
+      <h2>Alerts</h2>
+
+      <button onClick={fetchAlertsData}>Refresh Alerts</button>
+
+      {alerts.map((alert) => (
+        <div key={alert.id} className="alert-card">
+          <p>{alert.message}</p>
+
+          {!alert.is_resolved && (
+            <button onClick={() => resolveAlert(alert.id)}>
+              Resolve
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+
+  const renderReports = () => (
+    <div className="reports-panel">
+      <h2>Weekly Reports</h2>
+
+      <button onClick={fetchWeeklyReportsData}>
+        Load Reports
+      </button>
+
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={weeklyReports}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="site_name" />
+          <YAxis />
+          <Tooltip />
+          <Legend />
+
+          <Bar
+            dataKey="uptime_percentage"
+            fill="#22c55e"
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+
+  const renderAddSite = () => (
+    <div className="add-site-panel">
+      <h2>Create Site</h2>
+
+      {createMessage && <div className="message">{createMessage}</div>}
+
+      <form onSubmit={async (e) => {
+        e.preventDefault()
+        setCreateMessage('')
+        try {
+          await axios.post('/api/sites', newSite)
+          setCreateMessage('Site created/updated successfully')
+          await fetchSites()
+          setSelectedSite(newSite.site_id)
+          setSelectedSiteName(newSite.site_name)
+          setActiveTab('dashboard')
+          setNewSite({ site_id: '', site_name: '', oem: '', location: '', capacity_kw: '' })
+        } catch (err) {
+          console.error('Error creating site:', err)
+          setCreateMessage('Failed to create site: ' + (err.response?.data?.error || err.message))
+        }
+      }}>
+        <div>
+          <label>Site ID</label>
+          <input value={newSite.site_id} onChange={(e) => setNewSite({ ...newSite, site_id: e.target.value })} required />
+        </div>
+
+        <div>
+          <label>Site Name</label>
+          <input value={newSite.site_name} onChange={(e) => setNewSite({ ...newSite, site_name: e.target.value })} required />
+        </div>
+
+        <div>
+          <label>OEM</label>
+          <input value={newSite.oem} onChange={(e) => setNewSite({ ...newSite, oem: e.target.value })} required />
+        </div>
+
+        <div>
+          <label>Location</label>
+          <input value={newSite.location} onChange={(e) => setNewSite({ ...newSite, location: e.target.value })} />
+        </div>
+
+        <div>
+          <label>Capacity (kW)</label>
+          <input value={newSite.capacity_kw} onChange={(e) => setNewSite({ ...newSite, capacity_kw: e.target.value })} />
+        </div>
+
+        <button type="submit">Create Site</button>
+      </form>
+    </div>
+  )
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <h1>IoT Solar Dashboard</h1>
+
+        <nav className="nav-tabs">
+          <button
+            className={activeTab === 'dashboard' ? 'active' : ''}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            Dashboard
+          </button>
+
+          <button
+            className={activeTab === 'alerts' ? 'active' : ''}
+            onClick={() => setActiveTab('alerts')}
+          >
+            Alerts ({activeAlertsCount})
+          </button>
+
+          <button
+            className={activeTab === 'reports' ? 'active' : ''}
+            onClick={() => setActiveTab('reports')}
+          >
+            Reports
+          </button>
+          <button
+            className={activeTab === 'add-site' ? 'active' : ''}
+            onClick={() => setActiveTab('add-site')}
+          >
+            Add Site
+          </button>
+        </nav>
+      </header>
+
+      <main className="app-content">
+        {activeTab === 'dashboard' && renderDashboard()}
+        {activeTab === 'alerts' && renderAlerts()}
+        {activeTab === 'reports' && renderReports()}
+        {activeTab === 'add-site' && renderAddSite()}
+      </main>
     </div>
   )
 }
