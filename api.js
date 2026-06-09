@@ -1,7 +1,12 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 // Import Express framework for building the web server
 import express from "express";
-// Import Pool from pg library for PostgreSQL database connections
-import { Pool } from "pg";
 
 // Create an Express application instance
 const app = express();
@@ -30,10 +35,16 @@ import {
   validateDeviceToken,
   createApiKey,
   validateApiKey,
+  revokeApiKey,
   logAuditEvent,
   aggregateTelemetryHourly,
   checkDeviceAnomalies,
   fetchSites,
+  getUsersCount,
+  createUser,
+  verifyUserCredentials,
+  getUserById,
+  pool,
   fetchSiteById,
   fetchSiteDevices,
   upsertSite,
@@ -59,22 +70,106 @@ import {
 // API Key authentication middleware
 const authenticateApiKey = async (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
-  
+
   if (!apiKey) {
     return res.status(401).json({ error: 'API key required. Use X-API-Key header.' });
   }
-  
+
   try {
     const keyRecord = await validateApiKey(apiKey);
     if (!keyRecord) {
       return res.status(403).json({ error: 'Invalid or expired API key' });
     }
-    req.user = { userId: keyRecord.user_id };
+
+    req.user = {
+      userId: keyRecord.user_id,
+      username: keyRecord.username,
+      roles: keyRecord.roles || []
+    };
     next();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
+
+async function initializeDatabase() {
+  try {
+    const result = await pool.query(
+      "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'"
+    );
+
+    if (result.rowCount === 0) {
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const schemaPath = path.join(__dirname, 'db', 'schema.sql');
+      const schemaSql = await fs.readFile(schemaPath, 'utf8');
+
+      await pool.query(schemaSql);
+      console.log('Database schema initialized from schema.sql');
+    }
+
+    await runDatabaseMigrations();
+  } catch (err) {
+    console.error('Failed to initialize database schema:', err);
+    process.exit(1);
+  }
+}
+
+async function runDatabaseMigrations() {
+  try {
+    const result = await pool.query(
+      "SELECT data_type FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = 'user_id'"
+    );
+
+    if (result.rowCount === 1 && result.rows[0].data_type !== 'integer') {
+      console.log('Migrating api_keys.user_id to integer');
+      await pool.query(
+        'ALTER TABLE api_keys ALTER COLUMN user_id TYPE integer USING user_id::integer'
+      );
+    }
+
+    const fkResult = await pool.query(
+      "SELECT constraint_name FROM information_schema.table_constraints WHERE table_name = 'api_keys' AND constraint_type = 'FOREIGN KEY'"
+    );
+
+    const hasUserFk = fkResult.rows.some(
+      (row) => row.constraint_name === 'api_keys_user_id_fkey'
+    );
+
+    if (!hasUserFk) {
+      console.log('Adding missing foreign key constraint on api_keys.user_id');
+      await pool.query(
+        'ALTER TABLE api_keys ADD CONSTRAINT api_keys_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE'
+      );
+    }
+  } catch (err) {
+    console.error('Failed to run database migrations:', err);
+    process.exit(1);
+  }
+}
+
+async function initializeAdminUser() {
+  try {
+    const userCount = await getUsersCount();
+    if (userCount === 0 && process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
+      const roles = process.env.ADMIN_ROLES ? process.env.ADMIN_ROLES.split(',').map((r) => r.trim()) : ['admin'];
+      await createUser(process.env.ADMIN_USERNAME, process.env.ADMIN_PASSWORD, roles);
+      console.log('Admin user created:', process.env.ADMIN_USERNAME);
+    }
+  } catch (err) {
+    console.error('Admin initialization failed:', err);
+  }
+}
+
+async function bootstrap() {
+  await initializeDatabase();
+  await initializeAdminUser();
+}
+
+bootstrap().catch((err) => {
+  console.error('Bootstrapping failed:', err);
+  process.exit(1);
+});
 
 // Define a GET endpoint to retrieve telemetry data for a specific device
 app.get("/api/telemetry/:deviceId", async (req, res) => {
@@ -97,7 +192,7 @@ app.get("/api/devices", async (req, res) => {
 });
 
 // Send command to device
-app.post("/api/devices/:deviceId/commands", async (req, res) => {
+app.post("/api/devices/:deviceId/commands", authenticateApiKey, async (req, res) => {
   try {
     const { deviceId } = req.params;
     const { command, parameters } = req.body;
@@ -211,6 +306,55 @@ app.post("/api/devices/commands/bulk", async (req, res) => {
 // ============================================
 // PRODUCTION-GRADE FEATURES: Authentication & Security
 // ============================================
+
+// Login for admin users
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    const user = await verifyUserCredentials(username, password);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const apiKey = await createApiKey(user.id, 'Frontend login key', 30);
+    await logAuditEvent(user.id, 'LOGIN', user.id.toString(), { username });
+
+    res.json({
+      api_key: apiKey.api_key,
+      expires_at: apiKey.expires_at,
+      user: {
+        id: user.id,
+        username: user.username,
+        roles: user.roles
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/me', authenticateApiKey, async (req, res) => {
+  try {
+    res.json({ id: req.user.userId, username: req.user.username, roles: req.user.roles });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/logout', authenticateApiKey, async (req, res) => {
+  try {
+    const apiKey = req.headers['x-api-key'];
+    await revokeApiKey(apiKey);
+    await logAuditEvent(req.user.userId, 'LOGOUT', req.user.userId.toString(), {});
+    res.json({ status: 'ok', message: 'Logged out successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Create a new API key for user
 app.post("/api/auth/keys", authenticateApiKey, async (req, res) => {
@@ -382,8 +526,8 @@ async function handleUpsertSite(req, res) {
 }
 
 // Create or update a site
-app.post("/api/sites", handleUpsertSite);
-app.post("/api/clients", handleUpsertSite);
+app.post("/api/sites", authenticateApiKey, handleUpsertSite);
+app.post("/api/clients", authenticateApiKey, handleUpsertSite);
 
 // ============================================
 // ALERTS MANAGEMENT
@@ -411,7 +555,7 @@ app.get("/api/alerts/count", async (req, res) => {
 });
 
 // Resolve an alert
-app.post("/api/alerts/:alertId/resolve", async (req, res) => {
+app.post("/api/alerts/:alertId/resolve", authenticateApiKey, async (req, res) => {
   try {
     const { alertId } = req.params;
     await resolveAlert(alertId);
@@ -437,7 +581,7 @@ app.get("/api/reports/weekly", async (req, res) => {
 });
 
 // Generate weekly report for a site
-app.post("/api/reports/weekly/generate", async (req, res) => {
+app.post("/api/reports/weekly/generate", authenticateApiKey, async (req, res) => {
   try {
     const { siteId, weekStart } = req.body;
     if (!siteId || !weekStart) {
@@ -486,7 +630,7 @@ app.get("/api/devices/:deviceId/battery-config", async (req, res) => {
 });
 
 // Set battery configuration for a device
-app.post("/api/devices/:deviceId/battery-config", async (req, res) => {
+app.post("/api/devices/:deviceId/battery-config", authenticateApiKey, async (req, res) => {
   try {
     const { deviceId } = req.params;
     const { battery_type, battery_capacity_kwh, min_voltage, max_voltage, critical_percentage, warning_percentage } = req.body;

@@ -62,9 +62,18 @@ CREATE TABLE IF NOT EXISTS device_tokens (
   last_used TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  roles TEXT[] NOT NULL DEFAULT ARRAY['admin']::TEXT[],
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS api_keys (
   id SERIAL PRIMARY KEY,
-  user_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   api_key TEXT UNIQUE NOT NULL,
   description TEXT,
   is_active BOOLEAN DEFAULT true,
@@ -75,7 +84,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id SERIAL PRIMARY KEY,
-  user_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL,
   action TEXT NOT NULL,
   resource_id TEXT,
   details JSONB,

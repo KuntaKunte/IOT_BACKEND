@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import crypto from 'crypto';
 
 const pool = new Pool({ connectionString: process.env.DB_URL });
 
@@ -138,9 +139,46 @@ export async function fetchAllDevicesStats() {
   return result.rows;
 }
 
+function hashPassword(password, salt = null) {
+  const saltValue = salt || crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, saltValue, 310000, 32, 'sha256').toString('hex');
+  return { salt: saltValue, hash };
+}
+
+export async function getUsersCount() {
+  const result = await pool.query('SELECT COUNT(*) as count FROM users');
+  return parseInt(result.rows[0].count, 10);
+}
+
+export async function getUserByUsername(username) {
+  const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+  return result.rows[0];
+}
+
+export async function getUserById(userId) {
+  const result = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+  return result.rows[0];
+}
+
+export async function createUser(username, password, roles = ['admin']) {
+  const { salt, hash } = hashPassword(password);
+  const result = await pool.query(
+    'INSERT INTO users (username, password_hash, password_salt, roles) VALUES ($1, $2, $3, $4) RETURNING *',
+    [username, hash, salt, roles]
+  );
+  return result.rows[0];
+}
+
+export async function verifyUserCredentials(username, password) {
+  const user = await getUserByUsername(username);
+  if (!user) return null;
+  const { hash } = hashPassword(password, user.password_salt);
+  return hash === user.password_hash ? user : null;
+}
+
 // Device authentication - generate and validate API tokens
 export async function createDeviceToken(deviceId, expiresIn = '90d') {
-  const token = require('crypto').randomBytes(32).toString('hex');
+  const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 90 days
   
   const result = await pool.query(
@@ -159,9 +197,9 @@ export async function validateDeviceToken(token) {
 }
 
 // Device authentication - user API keys
-export async function createApiKey(userId, description, expiresIn = '365d') {
-  const key = require('crypto').randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days
+export async function createApiKey(userId, description, expiresInDays = 365) {
+  const key = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
   
   const result = await pool.query(
     'INSERT INTO api_keys (user_id, api_key, description, expires_at, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *',
@@ -172,10 +210,20 @@ export async function createApiKey(userId, description, expiresIn = '365d') {
 
 export async function validateApiKey(apiKey) {
   const result = await pool.query(
-    'SELECT * FROM api_keys WHERE api_key = $1 AND expires_at > NOW() AND is_active = true',
+    `SELECT ak.*, u.username, u.roles
+     FROM api_keys ak
+     JOIN users u ON ak.user_id = u.id
+     WHERE ak.api_key = $1 AND ak.expires_at > NOW() AND ak.is_active = true`,
     [apiKey]
   );
-  return result.rows[0];
+  const keyRecord = result.rows[0];
+  if (!keyRecord) return null;
+  await pool.query('UPDATE api_keys SET last_used = NOW() WHERE id = $1', [keyRecord.id]);
+  return keyRecord;
+}
+
+export async function revokeApiKey(apiKey) {
+  await pool.query('UPDATE api_keys SET is_active = false WHERE api_key = $1', [apiKey]);
 }
 
 // Audit logging for security tracking

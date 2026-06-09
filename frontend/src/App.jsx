@@ -18,6 +18,15 @@ import './index.css'
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
 
+  // Auth state
+  const [apiKey, setApiKey] = useState(localStorage.getItem('iot_api_key') || '')
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [showLogin, setShowLogin] = useState(false)
+  const [loginUsername, setLoginUsername] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [authError, setAuthError] = useState('')
+
   // Dashboard state
   const [sites, setSites] = useState([])
   const [selectedSite, setSelectedSite] = useState('')
@@ -47,6 +56,126 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
 
+  const isAdmin = user?.roles?.includes('admin')
+
+  const setSession = (key, userData) => {
+    localStorage.setItem('iot_api_key', key)
+    axios.defaults.headers.common['X-API-Key'] = key
+    setApiKey(key)
+    setUser(userData)
+  }
+
+  const clearSession = () => {
+    localStorage.removeItem('iot_api_key')
+    delete axios.defaults.headers.common['X-API-Key']
+    setApiKey('')
+    setUser(null)
+  }
+
+  const fetchCurrentUser = async () => {
+    const response = await axios.get('/api/auth/me')
+    return response.data
+  }
+
+  const handleLogin = async (event) => {
+    event.preventDefault()
+    setAuthError('')
+
+    try {
+      const response = await axios.post('/api/auth/login', {
+        username: loginUsername,
+        password: loginPassword,
+      })
+      setSession(response.data.api_key, response.data.user)
+      setShowLogin(false)
+      setActiveTab('dashboard')
+      setLoginPassword('')
+      setLoginUsername('')
+      setAuthError('')
+    } catch (error) {
+      console.error('Login failed:', error)
+      setAuthError(error.response?.data?.error || 'Login failed')
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await axios.post('/api/auth/logout')
+    } catch (error) {
+      console.warn('Logout request failed:', error)
+    }
+    clearSession()
+  }
+
+  useEffect(() => {
+    const storedKey = localStorage.getItem('iot_api_key')
+    if (!storedKey) {
+      setAuthLoading(false)
+      return
+    }
+
+    axios.defaults.headers.common['X-API-Key'] = storedKey
+    fetchCurrentUser()
+      .then((data) => {
+        setUser(data)
+      })
+      .catch((error) => {
+        console.warn('Auth check failed:', error)
+        clearSession()
+      })
+      .finally(() => {
+        setAuthLoading(false)
+      })
+  }, [])
+
+  useEffect(() => {
+    // Load public dashboard data even when not signed in
+    fetchSites()
+    fetchActiveAlertsCount()
+    fetchAlertsData()
+    fetchWeeklyReportsData()
+
+    const pollInterval = setInterval(() => {
+      fetchSites()
+      fetchActiveAlertsCount()
+    }, 30000)
+
+    return () => clearInterval(pollInterval)
+  }, [user])
+
+  const renderLogin = () => (
+    <div className="login-screen">
+      <div className="login-card">
+        <h2>Admin Login</h2>
+        <form onSubmit={handleLogin}>
+          <label htmlFor="username">Username</label>
+          <input
+            id="username"
+            value={loginUsername}
+            onChange={(e) => setLoginUsername(e.target.value)}
+            required
+          />
+
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            required
+          />
+
+          <div style={{display: 'flex', gap: '8px'}}>
+            <button type="submit">Sign In</button>
+            <button type="button" onClick={() => setShowLogin(false)}>Cancel</button>
+          </div>
+
+          {authError && <div className="message error">{authError}</div>}
+        </form>
+      </div>
+    </div>
+  )
+
   const templates = [
     { value: '', label: '— none —', command: '', parameters: '{}' },
     { value: 'restart', label: 'Restart', command: 'restart', parameters: '{}' },
@@ -70,21 +199,6 @@ function App() {
       console.error('Error fetching active alerts count:', error)
     }
   }
-
-  useEffect(() => {
-    fetchSites()
-    fetchActiveAlertsCount()
-    fetchAlertsData()
-    fetchWeeklyReportsData()
-
-    // Poll sites and alerts periodically so UI reflects backend changes
-    const pollInterval = setInterval(() => {
-      fetchSites()
-      fetchActiveAlertsCount()
-    }, 30000) // every 30 seconds
-
-    return () => clearInterval(pollInterval)
-  }, [])
 
   useEffect(() => {
     if (!selectedSite) return
@@ -380,7 +494,7 @@ function App() {
               onChange={(e) => setParameters(e.target.value)}
             />
 
-            <button onClick={sendCommand}>Send Command</button>
+            <button onClick={isAdmin ? sendCommand : () => setAuthError('Sign in as admin to send commands')} disabled={!isAdmin}>Send Command</button>
           </div>
         </div>
       )}
@@ -398,9 +512,11 @@ function App() {
           <p>{alert.message}</p>
 
           {!alert.is_resolved && (
-            <button onClick={() => resolveAlert(alert.id)}>
-              Resolve
-            </button>
+            isAdmin ? (
+              <button onClick={() => resolveAlert(alert.id)}>Resolve</button>
+            ) : (
+              <button onClick={() => setShowLogin(true)}>Sign in to resolve</button>
+            )
           )}
         </div>
       ))}
@@ -436,9 +552,16 @@ function App() {
     <div className="add-site-panel">
       <h2>Create Site</h2>
 
-      {createMessage && <div className="message">{createMessage}</div>}
+      {!isAdmin ? (
+        <div>
+          <p>Sign in as an admin to create or update sites.</p>
+          <button onClick={() => setShowLogin(true)}>Sign In</button>
+        </div>
+      ) : (
+        <>
+          {createMessage && <div className="message">{createMessage}</div>}
 
-      <form onSubmit={async (e) => {
+          <form onSubmit={async (e) => {
         e.preventDefault()
         setCreateMessage('')
         try {
@@ -481,13 +604,42 @@ function App() {
 
         <button type="submit">Create Site</button>
       </form>
+        </>
+      )}
     </div>
   )
+
+  if (authLoading) {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>IoT Solar Dashboard</h1>
+        </header>
+        <main className="app-content">
+          <p>Loading authentication...</p>
+        </main>
+      </div>
+    )
+  }
+
+
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>IoT Solar Dashboard</h1>
+        <div className="header-row">
+          <h1>IoT Solar Dashboard</h1>
+          <div className="user-actions">
+            {user ? (
+              <>
+                <span>Signed in as <strong>{user.username}</strong></span>
+                <button onClick={handleLogout}>Logout</button>
+              </>
+            ) : (
+              <button onClick={() => setShowLogin(true)}>Sign In</button>
+            )}
+          </div>
+        </div>
 
         <nav className="nav-tabs">
           <button
@@ -510,12 +662,14 @@ function App() {
           >
             Reports
           </button>
-          <button
-            className={activeTab === 'add-site' ? 'active' : ''}
-            onClick={() => setActiveTab('add-site')}
-          >
-            Add Site
-          </button>
+          {isAdmin && (
+            <button
+              className={activeTab === 'add-site' ? 'active' : ''}
+              onClick={() => setActiveTab('add-site')}
+            >
+              Add Site
+            </button>
+          )}
         </nav>
       </header>
 
@@ -524,6 +678,7 @@ function App() {
         {activeTab === 'alerts' && renderAlerts()}
         {activeTab === 'reports' && renderReports()}
         {activeTab === 'add-site' && renderAddSite()}
+        {showLogin && renderLogin()}
       </main>
     </div>
   )
