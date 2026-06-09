@@ -15,11 +15,12 @@ import {
 } from 'recharts'
 import './index.css'
 
+axios.defaults.withCredentials = true
+
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
 
   // Auth state
-  const [apiKey, setApiKey] = useState(localStorage.getItem('iot_api_key') || '')
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [showLogin, setShowLogin] = useState(false)
@@ -58,17 +59,11 @@ function App() {
 
   const isAdmin = user?.roles?.includes('admin')
 
-  const setSession = (key, userData) => {
-    localStorage.setItem('iot_api_key', key)
-    axios.defaults.headers.common['X-API-Key'] = key
-    setApiKey(key)
+  const setSession = (userData) => {
     setUser(userData)
   }
 
   const clearSession = () => {
-    localStorage.removeItem('iot_api_key')
-    delete axios.defaults.headers.common['X-API-Key']
-    setApiKey('')
     setUser(null)
   }
 
@@ -86,7 +81,7 @@ function App() {
         username: loginUsername,
         password: loginPassword,
       })
-      setSession(response.data.api_key, response.data.user)
+      setSession(response.data.user)
       setShowLogin(false)
       setActiveTab('dashboard')
       setLoginPassword('')
@@ -108,13 +103,6 @@ function App() {
   }
 
   useEffect(() => {
-    const storedKey = localStorage.getItem('iot_api_key')
-    if (!storedKey) {
-      setAuthLoading(false)
-      return
-    }
-
-    axios.defaults.headers.common['X-API-Key'] = storedKey
     fetchCurrentUser()
       .then((data) => {
         setUser(data)

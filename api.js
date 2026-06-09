@@ -14,6 +14,56 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:3001',
+  'http://localhost:5173'
+];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
+function parseCookies(req) {
+  const cookies = {};
+  const header = req.headers?.cookie;
+  if (!header) return cookies;
+
+  header.split(';').forEach((cookie) => {
+    const [name, ...rest] = cookie.split('=');
+    if (!name) return;
+    cookies[name.trim()] = decodeURIComponent(rest.join('=').trim());
+  });
+
+  return cookies;
+}
+
+const authCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/',
+  maxAge: 30 * 24 * 60 * 60 * 1000,
+};
+
+const getAccessTokenFromRequest = (req) => {
+  const headerToken = req.headers['x-api-key'];
+  if (headerToken) return headerToken;
+  const cookies = parseCookies(req);
+  return cookies.access_token;
+};
+
 // Generic error handler (avoids process crash on uncaught errors)
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
@@ -67,12 +117,12 @@ import {
   hasActiveBatteryCriticalAlert
 } from './db.js';
 
-// API Key authentication middleware
+// API Key and cookie authentication middleware
 const authenticateApiKey = async (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
+  const apiKey = getAccessTokenFromRequest(req);
 
   if (!apiKey) {
-    return res.status(401).json({ error: 'API key required. Use X-API-Key header.' });
+    return res.status(401).json({ error: 'Authentication required. Use X-API-Key header or login via the frontend.' });
   }
 
   try {
@@ -323,14 +373,18 @@ app.post('/api/auth/login', async (req, res) => {
     const apiKey = await createApiKey(user.id, 'Frontend login key', 30);
     await logAuditEvent(user.id, 'LOGIN', user.id.toString(), { username });
 
+    res.cookie('access_token', apiKey.api_key, {
+      ...authCookieOptions,
+      expires: new Date(apiKey.expires_at)
+    });
+
     res.json({
-      api_key: apiKey.api_key,
-      expires_at: apiKey.expires_at,
       user: {
         id: user.id,
         username: user.username,
         roles: user.roles
-      }
+      },
+      expires_at: apiKey.expires_at
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -347,9 +401,12 @@ app.get('/api/auth/me', authenticateApiKey, async (req, res) => {
 
 app.post('/api/auth/logout', authenticateApiKey, async (req, res) => {
   try {
-    const apiKey = req.headers['x-api-key'];
-    await revokeApiKey(apiKey);
+    const apiKey = getAccessTokenFromRequest(req);
+    if (apiKey) {
+      await revokeApiKey(apiKey);
+    }
     await logAuditEvent(req.user.userId, 'LOGOUT', req.user.userId.toString(), {});
+    res.clearCookie('access_token', authCookieOptions);
     res.json({ status: 'ok', message: 'Logged out successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
