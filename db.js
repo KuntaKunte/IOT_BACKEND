@@ -226,6 +226,53 @@ export async function revokeApiKey(apiKey) {
   await pool.query('UPDATE api_keys SET is_active = false WHERE api_key = $1', [apiKey]);
 }
 
+export async function createAccessToken(userId, expiresInMinutes = 15) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
+  const result = await pool.query(
+    'INSERT INTO access_tokens (user_id, token, expires_at, revoked, created_at) VALUES ($1, $2, $3, false, NOW()) RETURNING *',
+    [userId, token, expiresAt]
+  );
+  return result.rows[0];
+}
+
+export async function validateAccessToken(token) {
+  const result = await pool.query(
+    `SELECT at.*, u.username, u.roles
+     FROM access_tokens at
+     JOIN users u ON at.user_id = u.id
+     WHERE at.token = $1 AND at.expires_at > NOW() AND at.revoked = false`,
+    [token]
+  );
+  return result.rows[0];
+}
+
+export async function revokeAccessToken(token) {
+  await pool.query('UPDATE access_tokens SET revoked = true WHERE token = $1', [token]);
+}
+
+export async function createRefreshToken(userId, expiresInDays = 30) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+  const result = await pool.query(
+    'INSERT INTO refresh_tokens (user_id, token, expires_at, revoked, created_at) VALUES ($1, $2, $3, false, NOW()) RETURNING *',
+    [userId, token, expiresAt]
+  );
+  return result.rows[0];
+}
+
+export async function validateRefreshToken(token) {
+  const result = await pool.query(
+    'SELECT * FROM refresh_tokens WHERE token = $1 AND expires_at > NOW() AND revoked = false',
+    [token]
+  );
+  return result.rows[0];
+}
+
+export async function revokeRefreshToken(token) {
+  await pool.query('UPDATE refresh_tokens SET revoked = true WHERE token = $1', [token]);
+}
+
 // Audit logging for security tracking
 export async function logAuditEvent(userId, action, resourceId, details = {}) {
   const result = await pool.query(

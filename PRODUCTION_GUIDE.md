@@ -28,6 +28,26 @@ curl -X POST http://localhost:3000/api/auth/keys \
   -d '{"description": "Production API Key"}'
 ```
 
+#### Admin Session Login
+- The frontend supports admin login via `POST /api/auth/login`.
+- Successful login issues secure `httpOnly` cookies: `access_token` and `refresh_token`.
+- The dashboard automatically refreshes expired sessions using `POST /api/auth/refresh`.
+- Logout is available through `POST /api/auth/logout` and the UI header button.
+
+Example login request:
+```bash
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "secret"}'
+```
+
+Example logout request:
+```bash
+curl -X POST http://localhost:3000/api/auth/logout \
+  -H "Content-Type: application/json" \
+  -b cookie.txt
+```
+
 #### Audit Logging
 - All authentication and command actions are logged
 - Tracks user ID, action type, resource ID, and timestamp

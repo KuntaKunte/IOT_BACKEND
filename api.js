@@ -54,7 +54,16 @@ const authCookieOptions = {
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax',
   path: '/',
-  maxAge: 30 * 24 * 60 * 60 * 1000,
+};
+
+const accessTokenCookieOptions = {
+  ...authCookieOptions,
+  maxAge: 15 * 60 * 1000, // 15 minutes
+};
+
+const refreshTokenCookieOptions = {
+  ...authCookieOptions,
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
 };
 
 const getAccessTokenFromRequest = (req) => {
@@ -62,6 +71,11 @@ const getAccessTokenFromRequest = (req) => {
   if (headerToken) return headerToken;
   const cookies = parseCookies(req);
   return cookies.access_token;
+};
+
+const getRefreshTokenFromRequest = (req) => {
+  const cookies = parseCookies(req);
+  return cookies.refresh_token;
 };
 
 // Generic error handler (avoids process crash on uncaught errors)
@@ -86,6 +100,12 @@ import {
   createApiKey,
   validateApiKey,
   revokeApiKey,
+  createAccessToken,
+  validateAccessToken,
+  revokeAccessToken,
+  createRefreshToken,
+  validateRefreshToken,
+  revokeRefreshToken,
   logAuditEvent,
   aggregateTelemetryHourly,
   checkDeviceAnomalies,
@@ -119,16 +139,20 @@ import {
 
 // API Key and cookie authentication middleware
 const authenticateApiKey = async (req, res, next) => {
-  const apiKey = getAccessTokenFromRequest(req);
+  const authToken = getAccessTokenFromRequest(req);
 
-  if (!apiKey) {
+  if (!authToken) {
     return res.status(401).json({ error: 'Authentication required. Use X-API-Key header or login via the frontend.' });
   }
 
   try {
-    const keyRecord = await validateApiKey(apiKey);
+    let keyRecord = await validateApiKey(authToken);
     if (!keyRecord) {
-      return res.status(403).json({ error: 'Invalid or expired API key' });
+      keyRecord = await validateAccessToken(authToken);
+    }
+
+    if (!keyRecord) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
     }
 
     req.user = {
@@ -191,6 +215,42 @@ async function runDatabaseMigrations() {
       await pool.query(
         'ALTER TABLE api_keys ADD CONSTRAINT api_keys_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE'
       );
+    }
+
+    const accessTokensResult = await pool.query(
+      "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'access_tokens'"
+    );
+
+    if (accessTokensResult.rowCount === 0) {
+      console.log('Creating access_tokens table');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS access_tokens (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token TEXT UNIQUE NOT NULL,
+          revoked BOOLEAN DEFAULT false,
+          created_at TIMESTAMP DEFAULT NOW(),
+          expires_at TIMESTAMP NOT NULL
+        )
+      `);
+    }
+
+    const refreshTokensResult = await pool.query(
+      "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'refresh_tokens'"
+    );
+
+    if (refreshTokensResult.rowCount === 0) {
+      console.log('Creating refresh_tokens table');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token TEXT UNIQUE NOT NULL,
+          revoked BOOLEAN DEFAULT false,
+          created_at TIMESTAMP DEFAULT NOW(),
+          expires_at TIMESTAMP NOT NULL
+        )
+      `);
     }
   } catch (err) {
     console.error('Failed to run database migrations:', err);
@@ -370,12 +430,17 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const apiKey = await createApiKey(user.id, 'Frontend login key', 30);
+    const accessToken = await createAccessToken(user.id, 15);
+    const refreshToken = await createRefreshToken(user.id, 30);
     await logAuditEvent(user.id, 'LOGIN', user.id.toString(), { username });
 
-    res.cookie('access_token', apiKey.api_key, {
-      ...authCookieOptions,
-      expires: new Date(apiKey.expires_at)
+    res.cookie('access_token', accessToken.token, {
+      ...accessTokenCookieOptions,
+      expires: new Date(accessToken.expires_at)
+    });
+    res.cookie('refresh_token', refreshToken.token, {
+      ...refreshTokenCookieOptions,
+      expires: new Date(refreshToken.expires_at)
     });
 
     res.json({
@@ -384,7 +449,50 @@ app.post('/api/auth/login', async (req, res) => {
         username: user.username,
         roles: user.roles
       },
-      expires_at: apiKey.expires_at
+      expires_at: accessToken.expires_at
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/refresh', async (req, res) => {
+  try {
+    const refreshToken = getRefreshTokenFromRequest(req);
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'Refresh token required' });
+    }
+
+    const tokenRecord = await validateRefreshToken(refreshToken);
+    if (!tokenRecord) {
+      return res.status(403).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    const user = await getUserById(tokenRecord.user_id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await revokeRefreshToken(refreshToken);
+    const newAccessToken = await createAccessToken(user.id, 15);
+    const newRefreshToken = await createRefreshToken(user.id, 30);
+
+    res.cookie('access_token', newAccessToken.token, {
+      ...accessTokenCookieOptions,
+      expires: new Date(newAccessToken.expires_at)
+    });
+    res.cookie('refresh_token', newRefreshToken.token, {
+      ...refreshTokenCookieOptions,
+      expires: new Date(newRefreshToken.expires_at)
+    });
+
+    res.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        roles: user.roles
+      },
+      expires_at: newAccessToken.expires_at
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -401,12 +509,17 @@ app.get('/api/auth/me', authenticateApiKey, async (req, res) => {
 
 app.post('/api/auth/logout', authenticateApiKey, async (req, res) => {
   try {
-    const apiKey = getAccessTokenFromRequest(req);
-    if (apiKey) {
-      await revokeApiKey(apiKey);
+    const accessToken = getAccessTokenFromRequest(req);
+    const refreshToken = getRefreshTokenFromRequest(req);
+    if (accessToken) {
+      await revokeAccessToken(accessToken);
+    }
+    if (refreshToken) {
+      await revokeRefreshToken(refreshToken);
     }
     await logAuditEvent(req.user.userId, 'LOGOUT', req.user.userId.toString(), {});
-    res.clearCookie('access_token', authCookieOptions);
+    res.clearCookie('access_token', accessTokenCookieOptions);
+    res.clearCookie('refresh_token', refreshTokenCookieOptions);
     res.json({ status: 'ok', message: 'Logged out successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

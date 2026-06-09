@@ -55,6 +55,11 @@ npm install
 npm test
 ```
 
+Authentication
+- The frontend uses secure `httpOnly` cookies for admin login, access tokens, and refresh tokens.
+- Admin users sign in via the dashboard UI, which stores tokens only in cookies and not in browser localStorage.
+- A logout button is available in the header to clear the session and revoke the current tokens.
+
 Local development with Docker Compose override:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.override.yml up --build

@@ -67,9 +67,22 @@ function App() {
     setUser(null)
   }
 
+  const refreshSession = async () => {
+    const response = await axios.post('/api/auth/refresh')
+    setSession(response.data.user)
+    return response.data.user
+  }
+
   const fetchCurrentUser = async () => {
-    const response = await axios.get('/api/auth/me')
-    return response.data
+    try {
+      const response = await axios.get('/api/auth/me')
+      return response.data
+    } catch (error) {
+      if ([401, 403].includes(error.response?.status)) {
+        return refreshSession()
+      }
+      throw error
+    }
   }
 
   const handleLogin = async (event) => {
@@ -114,6 +127,37 @@ function App() {
       .finally(() => {
         setAuthLoading(false)
       })
+
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        const originalRequest = error.config
+        if (
+          !originalRequest ||
+          originalRequest._retry ||
+          originalRequest.url?.endsWith('/api/auth/refresh')
+        ) {
+          return Promise.reject(error)
+        }
+
+        if (error.response?.status === 401) {
+          originalRequest._retry = true
+          try {
+            await refreshSession()
+            return axios(originalRequest)
+          } catch (refreshError) {
+            clearSession()
+            return Promise.reject(refreshError)
+          }
+        }
+
+        return Promise.reject(error)
+      }
+    )
+
+    return () => {
+      axios.interceptors.response.eject(interceptor)
+    }
   }, [])
 
   useEffect(() => {
