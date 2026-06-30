@@ -205,7 +205,7 @@ async function start() {
         );
 
         // Update device status and site status immediately
-        await upsertDevice(deviceId, 'online');
+        await upsertDevice(deviceId, 'online', data.oem || 'unknown');
         if (data.site_id) {
           await updateSiteStatus(data.site_id, 'ok');
         }
@@ -256,7 +256,7 @@ async function start() {
         console.log('Saved telemetry:', data.device_id);
       } else if (messageType === 'status') {
         // Update device status
-        await upsertDevice(deviceId, data.status || 'online');
+        await upsertDevice(deviceId, data.status || 'online', data.oem || 'unknown');
         console.log('Updated status for device:', deviceId, data.status);
       } else if (messageType === 'response') {
         // Handle command response
