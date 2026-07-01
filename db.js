@@ -11,13 +11,13 @@ export async function fetchTelemetry(deviceId) {
   return result.rows;
 }
 
-export async function upsertDevice(deviceId, status = 'online') {
+export async function upsertDevice(deviceId, status = 'online', oem = 'unknown') {
   await pool.query(
-    `INSERT INTO devices (device_id, status, last_seen)
-     VALUES ($1, $2, NOW())
+    `INSERT INTO devices (device_id, status, oem, last_seen)
+     VALUES ($1, $2, $3, NOW())
      ON CONFLICT (device_id)
      DO UPDATE SET status = $2, last_seen = NOW()`,
-    [deviceId, status]
+    [deviceId, status, oem]
   );
 }
 
